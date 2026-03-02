@@ -1,6 +1,6 @@
 <div align="center">
 
-# AgriSoil AI 🌱
+# AgriSoil AI 
 
 ### *Intelligent Soil Analysis. Smarter Agriculture.*
 
