@@ -37,7 +37,10 @@ app.include_router(history_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    initialize_firebase()
+    try:
+        initialize_firebase()
+    except Exception:
+        logger.exception("Firebase initialization failed during startup; continuing")
     try:
         await ping_database()
     except Exception:
