@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "AgriSoil AI Backend"
     environment: str = "development"
     api_prefix: str = "/api"
-    mongo_uri: str
+    mongo_uri: str | None = None
     mongo_db_name: str = "agrisoil"
     weather_api_base_url: str = "https://api.open-meteo.com/v1/forecast"
     firebase_project_id: str
