@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: amd-hackthon-backend
+    runtime: python
+    rootDir: AMD-Slingshot-main/backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOW_DEV_AUTH_BYPASS
+        value: false
+      - key: REQUIRE_DB_ON_STARTUP
+        value: false
+      - key: MONGO_DB_NAME
+        value: agrisoil
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: MONGO_URI
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: STATIC_BASE_URL
+        sync: false
