@@ -6,7 +6,7 @@ import axios from 'axios';
 import { useAppStore } from '../store/useStore';
 import { useAuthStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
-import { apiClient, getFirebaseAuthHeader } from '../api/client';
+import { apiClient, getFirebaseAuthHeader, refreshFirebaseAuthHeader } from '../api/client';
 
 export const SoilUpload = () => {
   const { t } = useTranslation();
@@ -404,7 +404,7 @@ export const SoilUpload = () => {
           setWeather(weatherSnapshot);
         } catch (weatherError) {
           console.error(weatherError);
-          setError(t('upload.weather_failed'));
+          weatherSnapshot = null;
         } finally {
           setIsFetchingWeather(false);
         }
@@ -424,10 +424,14 @@ export const SoilUpload = () => {
 
       setCurrentJob({ status: 'processing', progress: 55, stage: 'classification' });
       const authHeader = await getFirebaseAuthHeader(user?.id);
-      const response = await apiClient.post('/analyze', formData, {
+      let response = await apiClient.post('/analyze', formData, {
         headers: authHeader,
         timeout: 180000,
       });
+
+      if (axios.isAxiosError(response as any)) {
+        // no-op safety branch; response is expected to be success object
+      }
 
       const backendResult = response?.data?.result;
       const returnedJobId = backendResult?.jobId || response?.data?.jobId || response?.data?.id;
@@ -507,6 +511,55 @@ export const SoilUpload = () => {
       setIsProcessing(false);
       navigate(`/result/${nextJobId}`);
     } catch (err) {
+      if (
+        axios.isAxiosError(err) &&
+        err.response?.status === 401 &&
+        typeof err.response?.data?.detail === 'string' &&
+        err.response.data.detail.toLowerCase().includes('invalid firebase token')
+      ) {
+        try {
+          const depthNumberRetry = parseFloat(depth);
+          const retryFormData = new FormData();
+          files.forEach((file, index) => {
+            retryFormData.append('images', file, `soil-${index + 1}.jpg`);
+          });
+          retryFormData.append('soilDepthCm', String(depthNumberRetry));
+          retryFormData.append('latitude', String(location?.lat ?? 0));
+          retryFormData.append('longitude', String(location?.lon ?? 0));
+          if (weather) {
+            retryFormData.append('temperatureC', String(weather.temperatureC));
+            retryFormData.append('moisturePct', String(weather.moisturePct));
+          }
+
+          const refreshedHeader = await refreshFirebaseAuthHeader();
+          const retryResponse = await apiClient.post('/analyze', retryFormData, {
+            headers: refreshedHeader,
+            timeout: 180000,
+          });
+
+          const retryResult = retryResponse?.data?.result;
+          if (retryResult) {
+            const finalJobId = typeof retryResult.jobId === 'string' ? retryResult.jobId : provisionalJobId;
+            setCurrentJob({
+              jobId: finalJobId,
+              status: 'completed',
+              progress: 100,
+              stage: 'completed',
+              depthCm: depthNumberRetry,
+              imageCount: files.length,
+              errorMessage: null,
+            });
+            setSoilResult(retryResult);
+            addToHistory(retryResult);
+            setIsProcessing(false);
+            navigate(`/result/${finalJobId}`);
+            return;
+          }
+        } catch (retryErr) {
+          console.error('Analyze retry failed', retryErr);
+        }
+      }
+
       if (isGeolocationError(err)) {
         setError(getGeolocationErrorMessage(err));
         return;

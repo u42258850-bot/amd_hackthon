@@ -14,6 +14,19 @@ export const apiClient = axios.create({
   timeout: 120000,
 });
 
+export const refreshFirebaseAuthHeader = async () => {
+  const currentUser = auth.currentUser ?? (await waitForFirebaseUser(6000));
+  if (!currentUser) {
+    throw new Error('AUTH_REQUIRED');
+  }
+
+  const token = await currentUser.getIdToken(true);
+  return {
+    Authorization: `Bearer ${token}`,
+    'X-Dev-User-Id': currentUser.uid,
+  };
+};
+
 const waitForFirebaseUser = (timeoutMs = 4000): Promise<User | null> => {
   return new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
@@ -40,7 +53,7 @@ export const getFirebaseAuthHeader = async (fallbackUserId?: string) => {
     throw new Error('AUTH_REQUIRED');
   }
 
-  const token = await currentUser.getIdToken();
+  const token = await currentUser.getIdToken(true);
   return {
     Authorization: `Bearer ${token}`,
     'X-Dev-User-Id': currentUser.uid,
