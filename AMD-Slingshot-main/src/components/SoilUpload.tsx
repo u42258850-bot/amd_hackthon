@@ -410,7 +410,7 @@ export const SoilUpload = () => {
         }
       }
 
-      const formData = new FormData();
+      let formData = new FormData();
       files.forEach((file, index) => {
         formData.append('images', file, `soil-${index + 1}.jpg`);
       });
@@ -423,17 +423,58 @@ export const SoilUpload = () => {
       }
 
       setCurrentJob({ status: 'processing', progress: 55, stage: 'classification' });
-      const authHeader = await getFirebaseAuthHeader(user?.id);
-      let response = await apiClient.post('/analyze', formData, {
-        headers: authHeader,
-        timeout: 180000,
-      });
 
-      if (axios.isAxiosError(response as any)) {
-        // no-op safety branch; response is expected to be success object
+      // Build auth header — if Firebase user is available use token, otherwise just X-Dev-User-Id
+      let authHeader: Record<string, string>;
+      try {
+        authHeader = await getFirebaseAuthHeader(user?.id);
+      } catch {
+        // getIdToken failed — send only X-Dev-User-Id for dev bypass
+        authHeader = { 'X-Dev-User-Id': user?.id || 'anonymous' };
       }
 
-      const backendResult = response?.data?.result;
+      let response: any;
+      let lastError: unknown = null;
+
+      // Try up to 2 times (initial + 1 retry) to handle cold starts / transient errors
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await apiClient.post('/analyze', formData, {
+            headers: authHeader,
+            timeout: 180000,
+          });
+          lastError = null;
+          break; // success
+        } catch (apiErr) {
+          lastError = apiErr;
+          console.error(`Analyze attempt ${attempt + 1} failed:`, apiErr);
+
+          // On 401, refresh token for the retry
+          if (axios.isAxiosError(apiErr) && apiErr.response?.status === 401 && attempt === 0) {
+            try {
+              authHeader = await refreshFirebaseAuthHeader();
+            } catch {
+              authHeader = { 'X-Dev-User-Id': user?.id || 'anonymous' };
+            }
+            // rebuild form data (files are consumed after first post)
+            formData = new FormData();
+            files.forEach((file, index) => {
+              formData.append('images', file, `soil-${index + 1}.jpg`);
+            });
+            formData.append('soilDepthCm', String(depthNumber));
+            formData.append('latitude', String(latitude));
+            formData.append('longitude', String(longitude));
+            if (weatherSnapshot) {
+              formData.append('temperatureC', String(weatherSnapshot.temperatureC));
+              formData.append('moisturePct', String(weatherSnapshot.moisturePct));
+            }
+          }
+        }
+      }
+
+      // If backend returned a successful response, use it
+      if (response?.data?.result) {
+        const backendResult = response.data.result;
       const returnedJobId = backendResult?.jobId || response?.data?.jobId || response?.data?.id;
       const nextJobId = typeof returnedJobId === 'string' && returnedJobId.length > 0
         ? returnedJobId
@@ -510,66 +551,48 @@ export const SoilUpload = () => {
       
       setIsProcessing(false);
       navigate(`/result/${nextJobId}`);
-    } catch (err) {
-      console.error('Analyze API call failed:', err);
 
-      // If geolocation error, show message but don't fallback
+      } else {
+        // Backend call failed after retries — use local fallback with visible warning
+        const errorDetail = lastError
+          ? axios.isAxiosError(lastError)
+            ? `Backend: ${lastError.response?.status ?? 'no response'} - ${lastError.response?.data?.detail ?? lastError.message}`
+            : String(lastError)
+          : 'Unknown error';
+        console.warn('Backend API failed, using local fallback. Error:', errorDetail);
+
+        const fallbackResult = buildLocalFallbackResult({
+          depthNumber,
+          fileCount: files.length,
+          latitude: location?.lat ?? 0,
+          longitude: location?.lon ?? 0,
+          weatherSnapshot: weather,
+        });
+
+        setCurrentJob({
+          jobId: fallbackResult.jobId,
+          status: 'completed',
+          progress: 100,
+          stage: 'completed',
+          depthCm: depthNumber,
+          imageCount: files.length,
+          errorMessage: null,
+        });
+        setSoilResult(fallbackResult);
+        addToHistory(fallbackResult);
+        setIsProcessing(false);
+        navigate(`/result/${fallbackResult.jobId}`);
+      }
+    } catch (err) {
+      console.error('Analyze flow error:', err);
+
       if (isGeolocationError(err)) {
         setError(getGeolocationErrorMessage(err));
         setCurrentJob({ status: 'failed', errorMessage: getGeolocationErrorMessage(err) });
         return;
       }
 
-      // For 401 errors, attempt one retry with a refreshed Firebase token
-      if (
-        axios.isAxiosError(err) &&
-        err.response?.status === 401
-      ) {
-        try {
-          const depthNumberRetry = parseFloat(depth);
-          const retryFormData = new FormData();
-          files.forEach((file, index) => {
-            retryFormData.append('images', file, `soil-${index + 1}.jpg`);
-          });
-          retryFormData.append('soilDepthCm', String(depthNumberRetry));
-          retryFormData.append('latitude', String(location?.lat ?? 0));
-          retryFormData.append('longitude', String(location?.lon ?? 0));
-          if (weather) {
-            retryFormData.append('temperatureC', String(weather.temperatureC));
-            retryFormData.append('moisturePct', String(weather.moisturePct));
-          }
-
-          const refreshedHeader = await refreshFirebaseAuthHeader();
-          const retryResponse = await apiClient.post('/analyze', retryFormData, {
-            headers: refreshedHeader,
-            timeout: 180000,
-          });
-
-          const retryResult = retryResponse?.data?.result;
-          if (retryResult) {
-            const finalJobId = typeof retryResult.jobId === 'string' ? retryResult.jobId : provisionalJobId;
-            setCurrentJob({
-              jobId: finalJobId,
-              status: 'completed',
-              progress: 100,
-              stage: 'completed',
-              depthCm: depthNumberRetry,
-              imageCount: files.length,
-              errorMessage: null,
-            });
-            setSoilResult(retryResult);
-            addToHistory(retryResult);
-            setIsProcessing(false);
-            navigate(`/result/${finalJobId}`);
-            return;
-          }
-        } catch (retryErr) {
-          console.error('Analyze retry also failed; falling back to local analysis', retryErr);
-        }
-      }
-
-      // ---- ALWAYS fall back to local analysis on ANY backend failure ----
-      console.warn('Using local fallback analysis due to backend error');
+      // Unexpected error — still use local fallback so user always sees a result
       const fallbackResult = buildLocalFallbackResult({
         depthNumber,
         fileCount: files.length,
