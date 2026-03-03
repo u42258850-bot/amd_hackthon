@@ -533,8 +533,9 @@ export const SoilUpload = () => {
         return;
       }
 
-      setCurrentJob({ status: 'failed' });
-      setError(getApiErrorMessage(err));
+      const apiErrorMessage = getApiErrorMessage(err);
+      setCurrentJob({ status: 'failed', errorMessage: apiErrorMessage });
+      setError(apiErrorMessage);
       console.error(err);
     } finally {
       setIsLocating(false);

@@ -79,6 +79,7 @@ interface JobState {
   status: 'queued' | 'processing' | 'completed' | 'failed' | null;
   stage: string | null;
   progress: number;
+  errorMessage?: string | null;
   depthCm?: number;
   imageCount?: number;
 }
@@ -111,6 +112,7 @@ export const useAppStore = create<AppState>()(
         status: null,
         stage: null,
         progress: 0,
+        errorMessage: null,
       },
       history: [],
       setLanguage: (language) => set({ language }),

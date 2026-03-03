@@ -28,7 +28,7 @@ export const ProcessingStatus = () => {
     }
 
     if (currentJob.status === 'failed') {
-      setError(t('processing_ui.failed_fetch'));
+      setError(currentJob.errorMessage || t('processing_ui.failed_fetch'));
       return;
     }
 
@@ -45,11 +45,11 @@ export const ProcessingStatus = () => {
       }, 600);
       return () => clearTimeout(timeoutId);
     }
-  }, [currentJob.status, history, jobId, navigate, soilResult, t]);
+  }, [currentJob.errorMessage, currentJob.status, history, jobId, navigate, soilResult, t]);
 
   const handleRetry = () => {
     setError(null);
-    setCurrentJob({ status: 'queued', progress: 0, stage: 'cleaning' });
+    setCurrentJob({ status: 'queued', progress: 0, stage: 'cleaning', errorMessage: null });
     navigate('/dashboard');
   };
 
