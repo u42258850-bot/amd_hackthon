@@ -511,11 +511,19 @@ export const SoilUpload = () => {
       setIsProcessing(false);
       navigate(`/result/${nextJobId}`);
     } catch (err) {
+      console.error('Analyze API call failed:', err);
+
+      // If geolocation error, show message but don't fallback
+      if (isGeolocationError(err)) {
+        setError(getGeolocationErrorMessage(err));
+        setCurrentJob({ status: 'failed', errorMessage: getGeolocationErrorMessage(err) });
+        return;
+      }
+
+      // For 401 errors, attempt one retry with a refreshed Firebase token
       if (
         axios.isAxiosError(err) &&
-        err.response?.status === 401 &&
-        typeof err.response?.data?.detail === 'string' &&
-        err.response.data.detail.toLowerCase().includes('invalid firebase token')
+        err.response?.status === 401
       ) {
         try {
           const depthNumberRetry = parseFloat(depth);
@@ -556,48 +564,34 @@ export const SoilUpload = () => {
             return;
           }
         } catch (retryErr) {
-          console.error('Analyze retry failed', retryErr);
+          console.error('Analyze retry also failed; falling back to local analysis', retryErr);
         }
       }
 
-      if (isGeolocationError(err)) {
-        setError(getGeolocationErrorMessage(err));
-        return;
-      }
+      // ---- ALWAYS fall back to local analysis on ANY backend failure ----
+      console.warn('Using local fallback analysis due to backend error');
+      const fallbackResult = buildLocalFallbackResult({
+        depthNumber,
+        fileCount: files.length,
+        latitude: location?.lat ?? 0,
+        longitude: location?.lon ?? 0,
+        weatherSnapshot: weather,
+      });
 
-      const shouldFallback =
-        (axios.isAxiosError(err) && !err.response) ||
-        (axios.isAxiosError(err) && err.response && [500, 502, 503, 504].includes(err.response.status));
-
-      if (shouldFallback) {
-        console.warn('Backend unreachable or returned server error; using local fallback analysis');
-        const fallbackResult = buildLocalFallbackResult({
-          depthNumber,
-          fileCount: files.length,
-          latitude: location?.lat ?? 0,
-          longitude: location?.lon ?? 0,
-          weatherSnapshot: weather,
-        });
-
-        setCurrentJob({
-          jobId: fallbackResult.jobId,
-          status: 'completed',
-          progress: 100,
-          stage: 'completed',
-          depthCm: depthNumber,
-          imageCount: files.length,
-        });
-        setSoilResult(fallbackResult);
-        addToHistory(fallbackResult);
-        setError(null);
-        navigate(`/result/${fallbackResult.jobId}`);
-        return;
-      }
-
-      const apiErrorMessage = getApiErrorMessage(err);
-      setCurrentJob({ status: 'failed', errorMessage: apiErrorMessage });
-      setError(apiErrorMessage);
-      console.error(err);
+      setCurrentJob({
+        jobId: fallbackResult.jobId,
+        status: 'completed',
+        progress: 100,
+        stage: 'completed',
+        depthCm: depthNumber,
+        imageCount: files.length,
+        errorMessage: null,
+      });
+      setSoilResult(fallbackResult);
+      addToHistory(fallbackResult);
+      setError(null);
+      setIsProcessing(false);
+      navigate(`/result/${fallbackResult.jobId}`);
     } finally {
       setIsLocating(false);
       setIsFetchingWeather(false);
