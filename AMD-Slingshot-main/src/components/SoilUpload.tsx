@@ -151,6 +151,9 @@ export const SoilUpload = () => {
     }
 
     if (axios.isAxiosError(errorValue)) {
+      if (!errorValue.response) {
+        return 'Cannot reach backend API. Please check deployment URL and CORS settings.';
+      }
       const backendMessage =
         (typeof errorValue.response?.data?.detail === 'string' && errorValue.response?.data?.detail) ||
         (typeof errorValue.response?.data?.message === 'string' && errorValue.response?.data?.message);

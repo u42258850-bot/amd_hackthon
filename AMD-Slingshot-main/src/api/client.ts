@@ -2,7 +2,12 @@ import axios from 'axios';
 import { auth } from '../firebase';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const runtimeFallbackApiBaseUrl =
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://amd-hackthon.onrender.com'
+    : 'http://localhost:8000';
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || runtimeFallbackApiBaseUrl;
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
