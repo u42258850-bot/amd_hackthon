@@ -10,9 +10,9 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: ALLOW_DEV_AUTH_BYPASS
-        value: false
+        value: "true"
       - key: REQUIRE_DB_ON_STARTUP
         value: false
       - key: MONGO_DB_NAME
