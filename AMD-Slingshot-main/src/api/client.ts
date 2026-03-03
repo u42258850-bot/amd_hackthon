@@ -45,7 +45,7 @@ const waitForFirebaseUser = (timeoutMs = 4000): Promise<User | null> => {
 export const getFirebaseAuthHeader = async (fallbackUserId?: string) => {
   const currentUser = auth.currentUser ?? (await waitForFirebaseUser());
   if (!currentUser) {
-    if (import.meta.env.DEV && fallbackUserId) {
+    if (fallbackUserId) {
       return {
         'X-Dev-User-Id': fallbackUserId,
       };

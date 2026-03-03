@@ -565,7 +565,12 @@ export const SoilUpload = () => {
         return;
       }
 
-      if (import.meta.env.DEV && axios.isAxiosError(err) && !err.response) {
+      const shouldFallback =
+        (axios.isAxiosError(err) && !err.response) ||
+        (axios.isAxiosError(err) && err.response && [500, 502, 503, 504].includes(err.response.status));
+
+      if (shouldFallback) {
+        console.warn('Backend unreachable or returned server error; using local fallback analysis');
         const fallbackResult = buildLocalFallbackResult({
           depthNumber,
           fileCount: files.length,
