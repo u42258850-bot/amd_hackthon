@@ -12,11 +12,12 @@ async def get_current_user_id(
     authorization: str = Header(default=""),
     x_dev_user_id: str | None = Header(default=None),
 ) -> str:
+    # Fast path: when dev bypass is enabled and X-Dev-User-Id is provided,
+    # skip Firebase verification entirely (don't even attempt the HTTP call).
     if (
         settings.environment != "production"
         and settings.allow_dev_auth_bypass
         and x_dev_user_id
-        and not authorization.startswith("Bearer ")
     ):
         return x_dev_user_id
 
@@ -31,8 +32,6 @@ async def get_current_user_id(
         decoded = verify_firebase_token(token)
         return str(decoded.get("uid"))
     except Exception as exc:  # noqa: BLE001
-        if settings.environment != "production" and settings.allow_dev_auth_bypass and x_dev_user_id:
-            return x_dev_user_id
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Firebase token") from exc
 
 
