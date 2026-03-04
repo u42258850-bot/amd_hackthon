@@ -86,9 +86,10 @@ def diagnostics() -> dict:
         pass
 
     return {
-        "version": "391d098b",
+        "version": "d8cb6195-fix2",
         "environment": settings.environment,
         "allow_dev_auth_bypass": settings.allow_dev_auth_bypass,
+        "auth_bypass_active": not settings.firebase_service_account_json or (settings.environment != "production" and settings.allow_dev_auth_bypass),
         "cors_origins": settings.allowed_origins,
         "mongo_configured": settings.mongo_uri is not None and len(settings.mongo_uri) > 10,
         "firebase_sa_configured": settings.firebase_service_account_json is not None,
